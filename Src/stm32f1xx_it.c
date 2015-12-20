@@ -56,7 +56,7 @@ void SysTick_Handler(void)
   /* USER CODE BEGIN SysTick_IRQn 0 */
 	iMilisecs++;
 	if (iMilisecs%100 ==0 )bLEDBreathing = 0xff;
-	if (iMilisecs%100 ==0 )bSendUDP = 0xff;
+	if (iMilisecs%1 ==0 )bSendUDP = 0xff;
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();

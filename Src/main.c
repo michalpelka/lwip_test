@@ -36,6 +36,7 @@
 
 /* USER CODE BEGIN Includes */
 #include "udp.h"
+#include "3dunit/mavlink.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -56,26 +57,26 @@ static void MX_GPIO_Init(void);
 
 /* USER CODE BEGIN 0 */
 
-struct procesMemory
-{
-// curennt sequence no;
-	uint16_t sequence;
-#define SEQUENCE_OFFSET 	0
-#define SEQUENCE_SIZE 		sizeof(uint16_t)
-// curennt current timestamp;
-	uint16_t timestamp;
-#define TIMESTAMP_OFFSET 	SEQUENCE_SIZE
-#define TIMESTAMP_size 	 	sizeof(uint16_t)
-//curent angle of rotation
-	uint32_t current_angle;
-#define CURRENTANGLE_OFFSET 	SEQUENCE_SIZE
-#define TIMESTAMP_size 	 	sizeof(uint16_t)
-};
-
-
 
 extern uint8_t bSendUDP;
 extern uint8_t bLEDBreathing;
+extern uint64_t iMilisecs;
+uint8_t mavlink_systemID = 1;
+uint16_t mavlink_port = 14550;
+uint8_t mavlink_getParams = 0x00;
+struct ip_addr destAddr;
+struct udp_pcb* my_udp_pcb;
+void udp_receive_callback(void *arg, struct udp_pcb *upcb, struct pbuf *p, struct ip_addr *addr, u16_t port);
+
+
+
+void send_udp_simple(uint8_t *payload, uint16_t length)
+{
+	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, length, PBUF_RAM);
+    memcpy(p->payload, payload, length);
+    udp_sendto(my_udp_pcb, p, &destAddr, mavlink_port);
+	pbuf_free(p);
+}
 
 /* USER CODE END 0 */
 
@@ -107,29 +108,125 @@ int main(void)
 
   int i =0;
   int j =0;
-  struct udp_pcb* upcb = udp_new();
-  struct ip_addr destAddr;
-  char DataFrame[25]="01:0000;02:0000;";
   IP4_ADDR(&destAddr, 192, 168, 0, 100);
-  struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, sizeof(DataFrame), PBUF_RAM);
-  struct udp_pcb* my_udp_pcb =  udp_new();
+  my_udp_pcb =  udp_new();
 
+  udp_bind(my_udp_pcb, IP_ADDR_ANY, mavlink_port);
+  udp_recv(my_udp_pcb, udp_receive_callback, NULL);
   while (1)
   {
+
 
   /* USER CODE END WHILE */
 	  MX_LWIP_Process();
 	  if (bSendUDP == 0xff)
 	  {
 		  bSendUDP = 0x00;
-		  memcpy(p->payload, &DataFrame, sizeof(DataFrame));
-		  udp_sendto(my_udp_pcb, p, &destAddr, 4444);
+
+		  // produce mavlink heartbeat
+		  mavlink_heartbeat_t heart_beat;
+		  heart_beat.type = MAV_TYPE_GENERIC;
+		  heart_beat.autopilot = MAV_AUTOPILOT_GENERIC;
+		  heart_beat.base_mode = MAV_MODE_FLAG_TEST_ENABLED;
+		  heart_beat.system_status = MAV_STATE_ACTIVE;
+		  heart_beat.mavlink_version = 3;
+		  mavlink_message_t message;
+		  mavlink_msg_heartbeat_encode(mavlink_systemID,0,&message, &heart_beat);
+		  uint8_t buffer[200];
+		  uint16_t len = mavlink_msg_to_send_buffer(buffer, &message);
+		  send_udp_simple(buffer, len);
+		  //struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+		  //memcpy(p->payload, buffer, len);
+		  //udp_sendto(my_udp_pcb, p, &destAddr, mavlink_port);
+		  //pbuf_free(p);
+
+		  mavlink_named_value_int_t v1;
+		  char name[10]="encoder";
+		  memcpy((char*)v1.name, name, 10);
+		  v1.time_boot_ms = iMilisecs;
+		  v1.value =100;
+		  mavlink_msg_named_value_int_encode(mavlink_systemID, 0 ,&message, &v1  );
+		  len = mavlink_msg_to_send_buffer(buffer, &message);
+		  send_udp_simple(buffer, len);
+
+		  if (mavlink_getParams == 0xff)
+		  {
+			  mavlink_getParams = 0x00;
+			  // give client parameters list
+			  {
+
+				  uint16_t IP_1=192;
+				  mavlink_param_value_t param;
+				  param.param_count = 4;
+				  strncpy(param.param_id, "DST_IP_1", 16);
+				  param.param_index =0;
+				  param.param_type = MAV_PARAM_TYPE_INT16;
+				  mavlink_param_union_t t;
+				  t.param_int16 = IP_1;
+				  param.param_value = t.param_float;
+				  mavlink_message_t message;
+				  mavlink_msg_param_value_encode(mavlink_systemID,0, &message, &param);
+				  len = mavlink_msg_to_send_buffer(buffer, &message);
+				  send_udp_simple(buffer, len);
+			  }
+			  {
+					  uint16_t IP_2 =168;
+					  mavlink_param_value_t param;
+					  param.param_count = 1;
+					  strncpy(param.param_id, "DST_IP_2", 16);
+					  param.param_index =1;
+					  param.param_type = MAV_PARAM_TYPE_INT16;
+					  mavlink_param_union_t t;
+					  t.param_int16 = IP_2;
+					  param.param_value = t.param_float;
+					  mavlink_message_t message;
+					  mavlink_msg_param_value_encode(mavlink_systemID,0, &message, &param);
+					  len = mavlink_msg_to_send_buffer(buffer, &message);
+					  send_udp_simple(buffer, len);
+			  }
+			  {
+					  uint16_t IP_3 =0;
+					  mavlink_param_value_t param;
+					  param.param_count = 4;
+					  strncpy(param.param_id, "DST_IP_3", 16);
+					  param.param_index =2;
+					  param.param_type = MAV_PARAM_TYPE_INT16;
+					  mavlink_param_union_t t;
+					  t.param_int16 = IP_3;
+					  param.param_value = t.param_float;
+					  mavlink_message_t message;
+					  mavlink_msg_param_value_encode(mavlink_systemID,0, &message, &param);
+					  len = mavlink_msg_to_send_buffer(buffer, &message);
+					  send_udp_simple(buffer, len);
+
+				}
+
+			  	{
+					  uint16_t IP_4 =0;
+					  mavlink_param_value_t param;
+					  param.param_count = 4;
+					  strncpy(param.param_id, "DST_IP_4", 16);
+					  param.param_index =3;
+					  param.param_type = MAV_PARAM_TYPE_INT16;
+					  mavlink_param_union_t t;
+					  t.param_int16 = IP_4;
+					  param.param_value = t.param_float;
+					  mavlink_message_t message;
+					  mavlink_msg_param_value_encode(mavlink_systemID,0, &message, &param);
+					  len = mavlink_msg_to_send_buffer(buffer, &message);
+					  send_udp_simple(buffer, len);
+
+			  	}
+
+		  }
+
 	  }
 	  if (bLEDBreathing == 0xff)
 	  {
 		  bLEDBreathing = 0x00;
-		  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+
 	  }
+
   /* USER CODE BEGIN 3 */
 
   }
@@ -327,6 +424,43 @@ void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+mavlink_message_t message;
+mavlink_status_t status;
+void udp_receive_callback(void *arg, struct udp_pcb *upcb, struct pbuf *p, struct ip_addr *addr, u16_t port)
+{
+
+	struct pbuf *my_p = p;
+	do
+	{
+		char* data = (char*)my_p->payload;
+		int i;
+		for ( i =0; i < my_p->len; i++)
+		{
+			if (mavlink_parse_char(1, data[i], &message, &status))
+			{
+				uint8_t sysid = message.sysid;
+				uint8_t compid = message.compid;
+				uint8_t system_id = message.sysid;
+				uint8_t autopilot_id = message.compid;
+				if (message.msgid == MAVLINK_MSG_ID_HEARTBEAT)
+				{
+					HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+				}
+				else
+				if (message.msgid == 21)
+				{
+					mavlink_getParams = 0xff;
+				}
+			}
+		}
+		my_p = my_p->next;
+	}
+	while (my_p != NULL);
+
+	/* Free the p buffer */
+	pbuf_free(p);
+
+}
 
 /* USER CODE END 4 */
 
